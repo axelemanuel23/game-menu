@@ -13,7 +13,7 @@ function App() {
             <div className="flex justify-between">
               <div className="flex space-x-7">
                 <div className="flex items-center py-4">
-                  <span className="font-semibold text-gray-500 text-lg">Gestión de Canchas de Fútbol</span>
+                  <span className="font-semibold text-gray-500 text-lg">MENU DE INFORMACION ULTRA IMPORTANTE</span>
                 </div>
               </div>
               <div className="flex items-center space-x-3">
