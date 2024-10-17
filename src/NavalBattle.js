@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Grid, Ship, Crosshair } from 'lucide-react';
+import { Ship, Crosshair } from 'lucide-react';
 
 const NavalBattle = () => {
   const [fase, setFase] = useState('colocacion'); // 'colocacion' o 'disparos'
