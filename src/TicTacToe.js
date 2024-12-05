@@ -36,18 +36,37 @@ function TicTacToe() {
     
     // Horizontal lines
     for (let i = 0; i < boardSize; i++) {
-      lines.push(Array.from({length: boardSize}, (_, j) => i * boardSize + j));
+      for (let j = 0; j <= boardSize - 3; j++) {
+        const line = Array.from({length: 3}, (_, k) => i * boardSize + j + k);
+        lines.push(line);
+      }
     }
     
     // Vertical lines
-    for (let i = 0; i < boardSize; i++) {
-      lines.push(Array.from({length: boardSize}, (_, j) => i + j * boardSize));
+    for (let i = 0; i <= boardSize - 3; i++) {
+      for (let j = 0; j < boardSize; j++) {
+        const line = Array.from({length: 3}, (_, k) => (i + k) * boardSize + j);
+        lines.push(line);
+      }
     }
     
-    // Diagonals
-    lines.push(Array.from({length: boardSize}, (_, i) => i * (boardSize + 1)));
-    lines.push(Array.from({length: boardSize}, (_, i) => (i + 1) * (boardSize - 1)));
-
+    // Diagonal lines (top-left to bottom-right)
+    for (let i = 0; i <= boardSize - 3; i++) {
+      for (let j = 0; j <= boardSize - 3; j++) {
+        const line = Array.from({length: 3}, (_, k) => (i + k) * boardSize + (j + k));
+        lines.push(line);
+      }
+    }
+    
+    // Diagonal lines (top-right to bottom-left)
+    for (let i = 0; i <= boardSize - 3; i++) {
+      for (let j = boardSize - 1; j >= 2; j--) {
+        const line = Array.from({length: 3}, (_, k) => (i + k) * boardSize + (j - k));
+        lines.push(line);
+      }
+    }
+    
+    // Check for winning lines
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line.every(index => currentBoard[index] === currentPlayer)) {
@@ -55,12 +74,12 @@ function TicTacToe() {
         return;
       }
     }
-
+    
+    // Check for draw
     if (currentBoard.every(cell => cell !== null)) {
       setWinner('Empate');
     }
   };
-
   function Menu({ setBoardSize, setGameStarted }) {
     return (
       <div className="menu">
