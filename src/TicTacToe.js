@@ -66,6 +66,7 @@ function TicTacToe() {
       <div className="menu">
         <h2>Selecciona el tamaño del tablero:</h2>
         <button onClick={() => setBoardSize(3)}>Tablero 3x3</button>
+        <button onClick={() => setBoardSize(4)}>Tablero 4x4</button>
         <button onClick={() => setGameStarted(true)}>Iniciar Juego</button>
       </div>
     );
