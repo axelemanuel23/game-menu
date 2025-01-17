@@ -34,13 +34,13 @@ function TicTacToe() {
   const checkWinner = (currentBoard) => {
     const lines = [];
     for (let i = 0; i < boardSize; i++) {
-      lines.push(Array.from({length: boardSize}, (, j) => i * boardSize + j));
+      lines.push(Array.from({length: boardSize}, (_, j) => i * boardSize + j));
     }
     for (let i = 0; i < boardSize; i++) {
-      lines.push(Array.from({length: boardSize}, (, j) => i + j * boardSize));
+      lines.push(Array.from({length: boardSize}, (_, j) => i + j * boardSize));
     }
-    lines.push(Array.from({length: boardSize}, (, i) => i * (boardSize + 1)));
-    lines.push(Array.from({length: boardSize}, (, i) => (i + 1) * (boardSize - 1)));
+    lines.push(Array.from({length: boardSize}, (_, i) => i * (boardSize + 1)));
+    lines.push(Array.from({length: boardSize}, (_, i) => (i + 1) * (boardSize - 1)));
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       if (line.every(index => currentBoard[index] === currentPlayer)) {
@@ -145,3 +145,4 @@ Volver al Menú
   )
 }
 export default TicTacToe;
+
