@@ -15,7 +15,7 @@ const NavalBattle = () => {
   const socket = useRef(null);
 
   useEffect(() => {
-    socket.current = new WebSocket('ws://multiplayer-game-ucym.onrender.com:10000');
+    socket.current = new WebSocket('ws://multiplayer-game-ucym.onrender.com');
 
     socket.current.onmessage = (message) => {
       const data = JSON.parse(message.data);
