@@ -15,7 +15,7 @@ const NavalBattle = () => {
   const socket = useRef(null);
 
   useEffect(() => {
-    socket.current = new WebSocket('ws://localhost:8080');
+    socket.current = new WebSocket('ws://192.168.185.1:8080');
 
     socket.current.onmessage = (message) => {
       const data = JSON.parse(message.data);
