@@ -19,6 +19,19 @@ function randomFleet() {
   }
 }
 
+function validFleet(sh) {
+  if (!Array.isArray(sh) || sh.length !== FLEET.length) return false;
+  if (sh.map(s => (Array.isArray(s) ? s.length : 0)).sort().join() !== [...FLEET].sort().join()) return false;
+  const used = new Set();
+  for (const s of sh) {
+    if (!s.every(c => Number.isInteger(c) && c >= 0 && c < 100)) return false;
+    const h = s.every((c, i) => c === s[0] + i && Math.floor(c / N) === Math.floor(s[0] / N));
+    if (!h && !s.every((c, i) => c === s[0] + i * N)) return false;
+    for (const c of s) { if (used.has(c)) return false; used.add(c); }
+  }
+  return true;
+}
+
 module.exports = class Naval extends Base {
   constructor() { super(); this.P = {}; this.phase = 'place'; this.turn = 0; this.winner = null; this.last = null; }
   start(ids) {
@@ -32,6 +45,7 @@ module.exports = class Naval extends Base {
     if (this.phase === 'place') {
       if (p.ready) return 'Ya estás listo.';
       if (d.random) { p.ships = randomFleet(); return; }
+      if (d.ships) { if (!validFleet(d.ships)) return 'Esa ubicación de la flota no es válida.'; p.ships = d.ships.map(s => s.slice()); return; }
       if (d.ready) { p.ready = true; if (this.ids.every(i => this.P[i].ready)) this.phase = 'play'; return; }
       return 'Movimiento inválido.';
     }
@@ -46,10 +60,14 @@ module.exports = class Naval extends Base {
     else this.turn = 1 - this.turn;
   }
   getState(id) {
+    if (!id) return { board: true, phase: this.phase, turn: this.ids[this.turn], winner: this.winner, abandoned: this.abandoned,
+      ready: this.ids.map(i => this.P[i].ready), last: this.last && { by: this.last.by, res: this.last.res },
+      grids: this.ids.map(i => { const P = this.P[i]; return { owner: i, left: P.ships.filter(s => !s.every(x => P.shots.has(x))).length,
+        cells: Array.from({ length: 100 }, (_, c) => (!P.shots.has(c) ? '' : P.ships.some(x => x.includes(c)) ? 'X' : 'o')) }; }) };
     const me = this.P[id], q = this.P[this.opp(id)];
     const mine = Array.from({ length: 100 }, (_, i) => { const s = me.ships.some(x => x.includes(i)), h = me.shots.has(i); return s ? (h ? 'X' : 'S') : h ? 'o' : ''; });
     const theirs = Array.from({ length: 100 }, (_, i) => (!q.shots.has(i) ? '' : q.ships.some(x => x.includes(i)) ? 'X' : 'o'));
-    return { phase: this.phase, ready: me.ready, mine, theirs, turn: this.ids[this.turn], winner: this.winner,
+    return { phase: this.phase, ready: me.ready, ships: me.ships, mine, theirs, turn: this.ids[this.turn], winner: this.winner,
       last: this.last && { mine: this.last.by === id, res: this.last.res },
       left: q.ships.filter(s => !s.every(x => q.shots.has(x))).length, abandoned: this.abandoned };
   }
