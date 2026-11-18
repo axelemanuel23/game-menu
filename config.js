@@ -14,9 +14,9 @@ module.exports = {
   // Para sumar un juego: crear games/<id>.js, registrarlo en server.js y agregarlo acá.
   games: {
     tateti: { name: 'Ta-Te-Ti', desc: 'Tres en línea, por turnos.', min: 2, max: 2, board: true },
-    adivina: { name: 'Adivina mi número', desc: 'Descubrí el número secreto de tu rival con pistas.', min: 2, max: 2 },
-    ahorcado: { name: 'Ahorcado', desc: 'Uno elige la palabra y los demás adivinan letra por letra.', min: 2, max: 8 },
-    naval: { name: 'Batalla naval', desc: 'Hundí la flota de tu rival antes de que hunda la tuya.', min: 2, max: 2 },
+    adivina: { name: 'Adivina mi número', desc: 'Descubrí el número secreto de tu rival con pistas.', min: 2, max: 2, board: true },
+    ahorcado: { name: 'Ahorcado', desc: 'Adiviná la palabra letra por letra: en grupo o en duelo.', min: 2, max: 8, board: true },
+    naval: { name: 'Batalla naval', desc: 'Hundí la flota de tu rival antes de que hunda la tuya.', min: 2, max: 2, board: true },
     desconfio: { name: 'Desconfío', desc: 'Juego de cartas de engaño: tirá cartas y desconfiá del rival.', min: 2, max: 6, board: true }
   }
 };
