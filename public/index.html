@@ -29,6 +29,14 @@ button:disabled{opacity:.45;cursor:not-allowed}
 .msg{font-size:1.2rem;font-weight:600;color:var(--gold)}
 #toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--red);padding:10px 16px;border-radius:8px;max-width:90%}
 #toast[hidden]{display:none}
+table{width:100%;border-collapse:collapse}
+td,th{padding:4px 8px;border-bottom:1px solid var(--line);text-align:left}
+select{background:var(--felt);color:var(--chalk);border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}
+.hand button{padding:8px 10px;background:var(--panel);color:var(--chalk);border:1px solid var(--line);font-weight:400}
+.g{display:grid;grid-template-columns:repeat(10,1fr);gap:2px;max-width:340px}
+.g button{aspect-ratio:1;padding:0;border:0;border-radius:3px;background:#2c6b73}
+.g button:disabled{cursor:default;opacity:1}
+.g .ship{background:#aab5b0}.g .hit{background:#d9483b}.g .miss{background:#173f33}
 </style>
 </head>
 <body>
@@ -52,7 +60,7 @@ socket.on('disconnect', () => toast('Se perdió la conexión con el servidor.'))
 
 const nick = () => $('#name').value.trim() || 'Jugador';
 const pick = g => { cur = g; draw(); }, back = () => { cur = null; draw(); };
-const create = () => socket.emit('create', { game: cur, name: nick(), isPublic: $('#pub').checked });
+const create = () => socket.emit('create', { game: cur, name: nick(), isPublic: $('#pub').checked, opts: OPTS[cur] ? OPTS[cur].get() : {} });
 const join = id => socket.emit('join', { id, name: nick() });
 const start = () => socket.emit('start'), move = d => socket.emit('move', d);
 const leave = () => { socket.emit('leave'); room = null; draw(); };
@@ -64,7 +72,7 @@ const menuView = () => `<h2>Elegí un juego</h2><div class="grid">${games.map(g 
 const lobbyView = () => {
   const g = games.find(x => x.id === cur), list = rooms.filter(r => r.game === cur);
   return `<button class="ghost" onclick="back()">Volver al menú</button><h2>${esc(g.name)}</h2>
-  <div class="row"><button onclick="create()">Crear sala</button><label><input type="checkbox" id="pub" checked> Sala pública</label></div>
+  ${OPTS[cur] ? OPTS[cur].html : ''}<div class="row"><button onclick="create()">Crear sala</button><label><input type="checkbox" id="pub" checked> Sala pública</label></div>
   <div class="row"><input id="code" maxlength="4" size="12" placeholder="Código de sala" aria-label="Código de sala"><button class="ghost" onclick="join($('#code').value)">Unirse con código</button></div>
   <h3>Salas abiertas</h3>${list.length ? list.map(r => `<div class="room"><span>${r.players.map(esc).join(', ')} (${r.players.length}/${r.max})</span><button onclick="join('${r.id}')">Unirse</button></div>`).join('')
     : '<p>No hay salas abiertas. Creá una para empezar.</p>'}`;
@@ -79,6 +87,77 @@ const VIEWS = {
   }
 };
 
+const OPTS = {
+  adivina: { html: '<div class="row"><label>Cifras <select id="digits">' + [3,4,5,6,7,8,9,10].map(n => `<option ${n === 4 ? 'selected' : ''}>${n}</option>`).join('') + '</select></label></div>', get: () => ({ digits: +$('#digits').value }) },
+  desconfio: { html: '<div class="row"><label>Baraja <select id="deck"><option value="es">Española (40)</option><option value="po">Póker (52)</option></select></label></div>', get: () => ({ deck: $('#deck').value }) }
+};
+const nameOf = (r, id) => esc(r.players[r.ids.indexOf(id)] || 'Jugador');
+const gone = '<p class="msg">Alguien salió y la partida terminó.</p>';
+
+const okNum = (v, n) => v.length === n && /^\d+$/.test(v) && new Set(v).size === n;
+const setSecret = n => { const v = $('#sec').value.trim(); okNum(v, n) ? socket.emit('move', { secret: v }) : toast(`Ingresá ${n} cifras sin repetir dígitos.`); };
+const tryGuess = n => { const i = $('#gs'), v = i.value.trim(); if (!okNum(v, n)) return toast(`Ingresá ${n} cifras sin repetir dígitos.`); socket.emit('move', { guess: v }); i.value = ''; };
+VIEWS.adivina = r => {
+  const s = r.state;
+  if (s.abandoned) return gone;
+  const tbl = (t, rows) => `<h3>${t}</h3><table><tr><th>Número</th><th>Acertados</th><th>En posición</th></tr>${rows.map(e => `<tr><td>${e.guess}</td><td>${e.known}</td><td>${e.exact}</td></tr>`).join('')}</table>`;
+  if (s.phase === 'secret') return s.mySecret ? `<p>Tu número: <b>${s.mySecret}</b></p><p class="msg">Esperando que tu rival elija el suyo…</p>`
+    : `<p class="msg">Elegí tu número secreto de ${s.n} cifras, sin repetir dígitos</p><div class="row"><input id="sec" inputmode="numeric" maxlength="${s.n}" aria-label="Número secreto"><button onclick="setSecret(${s.n})">Fijar número</button></div>`;
+  const mine = s.turn === r.you;
+  const msg = s.winner ? (s.winner === r.you ? '¡Adivinaste el número!' : 'Tu rival adivinó tu número') : mine ? 'Tu turno' : 'Turno del rival';
+  const guess = !s.winner && mine ? `<div class="row"><input id="gs" inputmode="numeric" maxlength="${s.n}" placeholder="${s.n} cifras" aria-label="Tu intento"><button onclick="tryGuess(${s.n})">Probar</button></div>` : '';
+  return `<p>Tu número: <b>${s.mySecret}</b>${s.oppSecret ? `, el de tu rival: <b>${s.oppSecret}</b>` : ''}</p><p class="msg">${msg}</p>${guess}`
+    + tbl('Tus intentos', s.log.filter(e => e.mine)) + tbl('Intentos del rival', s.log.filter(e => !e.mine));
+};
+
+const setWord = () => socket.emit('move', { word: $('#wd').value });
+VIEWS.ahorcado = r => {
+  const s = r.state, me = r.you;
+  if (s.abandoned) return gone;
+  if (s.phase === 'word') return s.setter === me
+    ? `<p class="msg">Elegí la palabra secreta</p><div class="row"><input id="wd" maxlength="20" placeholder="Entre 3 y 20 letras" aria-label="Palabra secreta"><button onclick="setWord()">Fijar palabra</button></div>`
+    : `<p class="msg">${nameOf(r, s.setter)} está eligiendo la palabra…</p>`;
+  const word = `<p class="msg" style="letter-spacing:.3em">${s.masked.join(' ')}</p>`;
+  const info = `<p>Errores: ${s.wrong} de ${s.max}. Letras probadas: ${s.tried.join(', ') || 'ninguna'}.</p>`;
+  if (s.result) return word + info + `<p class="msg">${(s.result === 'guessers') === (me !== s.setter) ? '¡Ganaste!' : 'Perdiste'}. La palabra era ${esc(s.word)}.</p>`;
+  const mine = s.turn === me;
+  if (s.setter === me) return word + info + `<p>Tu palabra: <b>${esc(s.word)}</b>. Turno de ${nameOf(r, s.turn)}.</p>`;
+  return word + info + `<p class="msg">${mine ? 'Tu turno: elegí una letra' : 'Turno de ' + nameOf(r, s.turn)}</p><div class="row hand">${[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(l => `<button ${mine && !s.tried.includes(l) ? '' : 'disabled'} onclick="move({letter:'${l}'})">${l}</button>`).join('')}</div>`;
+};
+
+VIEWS.naval = r => {
+  const s = r.state, mine = s.turn === r.you;
+  if (s.abandoned) return '<p class="msg">Tu rival salió de la partida.</p>';
+  const cls = c => ({ S: 'ship', X: 'hit', o: 'miss' }[c] || '');
+  const grid = fn => `<div class="g">${s.mine.map((_, i) => fn(i)).join('')}</div>`;
+  const own = grid(i => `<button class="${cls(s.mine[i])}" disabled></button>`);
+  if (s.phase === 'place') return `<p>Tu flota está ubicada al azar. Reubicala hasta que te guste y avisá que estás listo.</p>${own}`
+    + (s.ready ? '<p class="msg">Esperando a tu rival…</p>' : '<div class="row"><button class="ghost" onclick="move({random:true})">Reubicar al azar</button><button onclick="move({ready:true})">Estoy listo</button></div>');
+  const can = mine && !s.winner;
+  const foe = grid(i => `<button class="${cls(s.theirs[i])}" ${s.theirs[i] || !can ? 'disabled' : ''} onclick="move({cell:${i}})" aria-label="Disparar a la casilla ${i + 1}"></button>`);
+  const msg = s.winner ? (s.winner === r.you ? '¡Hundiste toda la flota rival!' : 'Tu flota fue hundida') : mine ? 'Tu turno: disparás' : 'Turno del rival';
+  const last = s.last ? `<p>${s.last.mine ? 'Tu disparo' : 'Disparo del rival'}: ${s.last.res}.</p>` : '';
+  return `<p class="msg">${msg}</p>${last}<h3>Tablero rival (${s.left} barcos a flote)</h3>${foe}<h3>Tu flota</h3>${own}`;
+};
+
+VIEWS.desconfio = r => {
+  const s = r.state, me = r.you, nm = id => nameOf(r, id);
+  if (s.abandoned) return gone;
+  const lab = c => `${s.deck === 'es' ? ({ 10: 'Sota', 11: 'Caballo', 12: 'Rey' }[c.v] || c.v) : ({ 1: 'A', 11: 'J', 12: 'Q', 13: 'K' }[c.v] || c.v)} de ${s.suits[c.s]}`;
+  const rv = s.reveal ? `<p>${nm(s.reveal.doubter)} desconfió de ${nm(s.reveal.by)}: la carta era ${lab(s.reveal.card)}. ${s.reveal.liar ? 'Mentía' : 'Decía la verdad'}, así que ${nm(s.reveal.loser)} se lleva el pozo.</p>` : '';
+  if (s.winner) return rv + `<p class="msg">${s.winner === me ? '¡Ganaste la partida!' : nm(s.winner) + ' ganó la partida'}</p>`;
+  const mine = s.turn === me;
+  const seats = `<p>${s.seats.map(x => `${x.id === s.turn ? '▶ ' : ''}${nm(x.id)}: ${x.n} cartas`).join(', ')}. Pozo: ${s.pile} cartas.</p>`;
+  let act;
+  if (s.phase === 'suit') act = mine
+    ? `<p class="msg">Elegí el palo de la mano</p><div class="row">${[...new Set(s.hand.map(c => c.s))].map(x => `<button onclick="move({suit:${x}})">${s.suits[x]}</button>`).join('')}</div>`
+    : `<p class="msg">${nm(s.turn)} está eligiendo el palo</p>`;
+  else if (mine && s.pending) act = `<p class="msg">${nm(s.lastBy)} se quedó sin cartas</p><div class="row"><button onclick="move({doubt:true})">Desconfío</button><button class="ghost" onclick="move({pass:true})">Aceptar jugada</button></div>`;
+  else act = `<p class="msg">${mine ? 'Tu turno: jugá una carta' : 'Turno de ' + nm(s.turn)} (palo: ${s.suits[s.suit]})</p>` + (mine && s.lastBy ? '<div class="row"><button onclick="move({doubt:true})">Desconfío</button></div>' : '');
+  const hand = `<div class="row hand">${s.hand.map(c => `<button ${mine && s.phase === 'play' && !s.pending ? '' : 'disabled'} onclick="move({card:'${c.id}'})">${esc(lab(c))}</button>`).join('')}</div>`;
+  return rv + seats + act + hand;
+};
+
 const roomView = () => {
   const r = room, host = r.host === r.you;
   const head = `<h2>${esc(r.gameName)}</h2><p>Sala <b>${r.id}</b>: ${r.players.map(esc).join(' vs ')}</p>`;
@@ -90,10 +169,11 @@ const roomView = () => {
 };
 
 function draw() {
-  const c = $('#code'), v = c ? c.value : '', f = c && document.activeElement === c, p = $('#pub'), pc = p ? p.checked : true;
+  const keep = {}, fid = document.activeElement && document.activeElement.id;
+  document.querySelectorAll('#app input, #app select').forEach(e => { if (e.id) keep[e.id] = e.type === 'checkbox' ? e.checked : e.value; });
   $('#app').innerHTML = room ? roomView() : cur ? lobbyView() : menuView();
-  if ($('#code')) { $('#code').value = v; if (f) $('#code').focus(); }
-  if ($('#pub')) $('#pub').checked = pc;
+  for (const id in keep) { const e = document.getElementById(id); if (e) { if (e.type === 'checkbox') e.checked = keep[id]; else e.value = keep[id]; } }
+  if (fid && document.getElementById(fid)) document.getElementById(fid).focus();
 }
 draw();
 </script>
