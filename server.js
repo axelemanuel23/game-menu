@@ -24,7 +24,7 @@ const emitTo = (p, ev, d) => { const s = p && p.sid && io.sockets.sockets.get(p.
 const code = () => { let c; do { c = Math.random().toString(36).slice(2, 6).toUpperCase(); } while (c.length < 4 || rooms.has(c)); return c; };
 
 const info = r => ({ id: r.id, game: r.game, gameName: cfg.games[r.game].name, players: r.players.map(p => p.name), ids: r.players.map(p => p.id),
-  online: r.players.map(p => !players.get(p.id)?.off), min: cfg.games[r.game].min, max: cfg.games[r.game].max,
+  online: r.players.map(p => !players.get(p.id)?.off), min: cfg.games[r.game].min, max: r.impl.max || cfg.games[r.game].max,
   status: r.status, host: r.host, paused: r.paused, boardOn: r.board ? !players.get(r.board)?.off : null });
 const publicRooms = () => [...rooms.values()].filter(r => r.isPublic && r.status === 'waiting').map(info);
 const lobby = () => io.emit('lobby', publicRooms());
@@ -131,7 +131,7 @@ io.on('connection', s => {
     const r = rooms.get(String(d.id || '').trim().toUpperCase());
     if (!r) return fail('No existe una sala con ese código.');
     if (r.status !== 'waiting') return fail('La partida ya empezó.');
-    if (r.players.length >= cfg.games[r.game].max) return fail('La sala está llena.');
+    if (r.players.length >= (r.impl.max || cfg.games[r.game].max)) return fail('La sala está llena.');
     r.players.push({ id: p.id, name: p.name }); p.room = r.id; if (!r.host) r.host = p.id;
     push(r); lobby();
   });
@@ -141,6 +141,8 @@ io.on('connection', s => {
     if (!r || (r.host !== p.id && r.board !== p.id) || r.status === 'playing') return;
     if (r.paused) return fail('La sala está en pausa.');
     if (r.players.length < cfg.games[r.game].min) return fail('Faltan jugadores para empezar.');
+    const bad = r.impl.check && r.impl.check(r.players.length);
+    if (bad) return fail(bad);
     r.impl = new GAMES[r.game](r.opts); r.impl.start(r.players.map(x => x.id), r.round++);
     r.status = 'playing'; push(r); lobby();
   });
