@@ -1,0 +1,11 @@
+.carta{display:block;width:84px;height:126px;border-radius:8px;object-fit:contain}
+.carta.chica{display:inline-block;width:34px;height:51px;border-radius:4px}
+.ctexto{display:flex;align-items:center;justify-content:center;background:#eeece0;color:#2a2100;border:1px solid #3a7561;padding:4px;font-size:.8rem;text-align:center}
+.mano{position:relative;display:flex;gap:8px;overflow-x:auto;padding:60px 8px 12px;-webkit-overflow-scrolling:touch}
+.mano.bloqueada{overflow-x:hidden;touch-action:none}
+.cw{position:relative;flex:0 0 auto;transition:transform .15s}
+.cw.sel{transform:translateY(-12px)}
+.cb{padding:0;border:0;background:none;border-radius:8px;cursor:pointer}
+.cb:disabled{opacity:.55;cursor:default}
+.jugar{position:absolute;left:50%;top:-44px;transform:translateX(-50%);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){.cw{transition:none}}
