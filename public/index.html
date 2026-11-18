@@ -41,12 +41,14 @@ select{background:var(--felt);color:var(--chalk);border:1px solid var(--line);bo
 #fleet{position:relative;max-width:340px}
 .dship{position:absolute;background:#aab5b0;border:2px solid #173f33;border-radius:6px;cursor:grab;touch-action:none;z-index:2}
 </style>
+<link rel="stylesheet" href="/cartas.css">
 </head>
 <body>
 <header><h1>Plataforma de juegos</h1><div id="who"></div></header>
 <main id="app"></main>
 <div id="toast" role="status" hidden></div>
 <script src="/socket.io/socket.io.js"></script>
+<script src="/cartas.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -110,7 +112,7 @@ const VIEWS = {
 const OPTS = {
   adivina: { html: '<div class="row"><label>Cifras <select id="digits">' + [3,4,5,6,7,8,9,10].map(n => `<option ${n === 4 ? 'selected' : ''}>${n}</option>`).join('') + '</select></label></div>', get: () => ({ digits: +$('#digits').value }) },
   ahorcado: { html: '<div class="row"><label>Modo <select id="modo"><option value="grupo">Grupal: uno elige la palabra</option><option value="duelo">Duelo: cada uno su palabra</option></select></label></div>', get: () => ({ modo: $('#modo').value }) },
-  desconfio: { html: '<div class="row"><label>Baraja <select id="deck"><option value="es">Española (40)</option><option value="po">Póker (52)</option></select></label></div>', get: () => ({ deck: $('#deck').value }) }
+  desconfio: { html: '<div class="row"><label>Baraja <select id="deck"><option value="espanola-40">Española (40)</option><option value="espanola-48">Española (48)</option><option value="poker-52">Póker (52)</option></select></label></div>', get: () => ({ deck: $('#deck').value }) }
 };
 const nameOf = (r, id) => esc(r.players[r.ids.indexOf(id)] || 'Jugador');
 const gone = '<p class="msg">Alguien salió y la partida terminó.</p>';
@@ -175,22 +177,21 @@ VIEWS.naval = r => {
 };
 
 VIEWS.desconfio = r => {
-  const s = r.state, me = r.you, nm = id => nameOf(r, id);
+  const s = r.state, me = r.you, m = s.mazo, nm = id => nameOf(r, id);
   if (s.abandoned) return gone;
-  const lab = c => `${s.deck === 'es' ? ({ 10: 'Sota', 11: 'Caballo', 12: 'Rey' }[c.v] || c.v) : ({ 1: 'A', 11: 'J', 12: 'Q', 13: 'K' }[c.v] || c.v)} de ${s.suits[c.s]}`;
-  const rv = s.reveal ? `<p>${nm(s.reveal.doubter)} desconfió de ${nm(s.reveal.by)}: la carta era ${lab(s.reveal.card)}. ${s.reveal.liar ? 'Mentía' : 'Decía la verdad'}, así que ${nm(s.reveal.loser)} se lleva el pozo.</p>` : '';
+  const palo = id => (m.palos.find(p => p.id === id) || {}).nombre || id;
+  const rv = s.reveal ? `<p>${nm(s.reveal.doubter)} desconfió de ${nm(s.reveal.by)}: la carta era ${esc(Cartas.label(m, s.reveal.card))}. ${s.reveal.liar ? 'Mentía' : 'Decía la verdad'}, así que ${nm(s.reveal.loser)} se lleva el pozo.</p><div class="row">${Cartas.img(m, s.reveal.card)}</div>` : '';
   if (s.winner) return rv + `<p class="msg">${s.winner === me ? '¡Ganaste la partida!' : nm(s.winner) + ' ganó la partida'}</p>`;
   const mine = s.turn === me;
   const seats = `<p>${s.seats.map(x => `${x.id === s.turn ? '▶ ' : ''}${nm(x.id)}: ${x.n} cartas`).join(', ')}. Pozo: ${s.pile} cartas.</p>`;
   let act;
   if (s.phase === 'suit') act = mine
-    ? `<p class="msg">Elegí el palo de la mano</p><div class="row">${[...new Set(s.hand.map(c => c.s))].map(x => `<button onclick="move({suit:${x}})">${s.suits[x]}</button>`).join('')}</div>`
+    ? `<p class="msg">Elegí el palo de la mano</p><div class="row">${[...new Set(s.hand.map(c => c.p))].map(x => `<button onclick="move({suit:'${x}'})">${esc(palo(x))}</button>`).join('')}</div>`
     : `<p class="msg">${nm(s.turn)} está eligiendo el palo</p>`;
   else if (mine && s.pending) act = `<p class="msg">${nm(s.lastBy)} se quedó sin cartas</p><div class="row"><button onclick="move({doubt:true})">Desconfío</button><button class="ghost" onclick="move({pass:true})">Aceptar jugada</button></div>`;
-  else act = `<p class="msg">${mine ? 'Tu turno: jugá una carta' : 'Turno de ' + nm(s.turn)} (palo: ${s.suits[s.suit]})</p>` + (mine && s.lastBy ? '<div class="row"><button onclick="move({doubt:true})">Desconfío</button></div>' : '');
-  const hand = `<div class="row hand">${s.hand.map(c => `<button ${mine && s.phase === 'play' && !s.pending ? '' : 'disabled'} onclick="move({card:'${c.id}'})">${esc(lab(c))}</button>`).join('')}</div>`;
-  const backs = '<div class="row">' + Array.from({ length: Math.min(s.pile, 20) }, () => '<span class="back"></span>').join('') + '</div>';
-  return r.mode === 'board' ? rv + seats + backs + act : r.mode === 'phone' ? rv + act + hand : rv + seats + act + hand;
+  else act = `<p class="msg">${mine ? 'Tu turno: jugá una carta' : 'Turno de ' + nm(s.turn)} (palo: ${esc(palo(s.suit))})</p>` + (mine && s.lastBy ? '<div class="row"><button onclick="move({doubt:true})">Desconfío</button></div>' : '');
+  const hand = Cartas.mano(m, s.hand, mine && s.phase === 'play' && !s.pending);
+  return r.mode === 'board' ? rv + seats + Cartas.dorsos(m, s.pile) + act : r.mode === 'phone' ? rv + act + hand : rv + seats + act + hand;
 };
 
 // Ubicación manual de barcos: arrastrar para mover, tocar para girar.
@@ -224,6 +225,7 @@ function bindFleet() {
   }));
 }
 
+Cartas.init({ redraw: () => draw(), play: id => move({ card: id }) });
 const roomView = () => {
   const r = room, host = r.host === r.you || r.mode === 'board';
   const who = r.players.map((n, i) => esc(n) + (r.online[i] ? '' : ' (desconectado)')).join(', ') || 'nadie todavía';
@@ -241,10 +243,12 @@ function draw() {
   const keep = {}, fid = document.activeElement && document.activeElement.id;
   document.querySelectorAll('#app input, #app select').forEach(e => { if (e.id) keep[e.id] = e.type === 'checkbox' ? e.checked : e.value; });
   $('#who').innerHTML = me ? `${esc(me.name)} <button class="ghost" onclick="bye()">Salir</button>` : '';
+  Cartas.guardar();
   $('#app').innerHTML = !me ? loginView() : room ? roomView() : me.role === 'board' ? boardMenuView() : cur ? lobbyView() : menuView();
   for (const id in keep) { const e = document.getElementById(id); if (e) { if (e.type === 'checkbox') e.checked = keep[id]; else e.value = keep[id]; } }
   if (fid && document.getElementById(fid)) document.getElementById(fid).focus();
   bindFleet();
+  Cartas.restaurar();
 }
 draw();
 </script>
