@@ -51,7 +51,7 @@ module.exports = class Desconfio extends Base {
   }
   getState(id) {
     return { deck: this.deck, suits: DECKS[this.deck].suits, phase: this.phase, turn: this.cur, suit: this.suit, pile: this.pile.length,
-      hand: [...this.hands[id]].sort((a, b) => a.s - b.s || a.v - b.v), seats: this.ids.map(i => ({ id: i, n: this.hands[i].length })),
+      hand: id ? [...this.hands[id]].sort((a, b) => a.s - b.s || a.v - b.v) : [], seats: this.ids.map(i => ({ id: i, n: this.hands[i].length })),
       lastBy: this.last && this.last.by, pending: this.pending, reveal: this.reveal, winner: this.winner, abandoned: this.abandoned };
   }
 };
