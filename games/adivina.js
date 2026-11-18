@@ -28,7 +28,8 @@ module.exports = class Adivina extends Base {
   getState(id) {
     const opp = this.ids.find(x => x !== id);
     return { n: this.n, phase: this.phase, mySecret: this.sec[id] || null, turn: this.ids[this.turn], winner: this.winner,
-      abandoned: this.abandoned, log: this.log.map(e => ({ mine: e.by === id, guess: e.guess, known: e.known, exact: e.exact })),
-      oppSecret: this.over && !this.abandoned ? this.sec[opp] || null : null };
+      abandoned: this.abandoned, log: this.log.map(e => ({ by: e.by, mine: e.by === id, guess: e.guess, known: e.known, exact: e.exact })),
+      oppSecret: this.over && !this.abandoned ? this.sec[opp] || null : null,
+      secrets: this.over && !this.abandoned ? this.sec : null };
   }
 };
