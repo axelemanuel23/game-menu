@@ -3,7 +3,10 @@ const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
 const cfg = require('./config');
-const GAMES = { tateti: require('./games/tateti') };
+const GAMES = {
+  tateti: require('./games/tateti'), adivina: require('./games/adivina'), ahorcado: require('./games/ahorcado'),
+  naval: require('./games/naval'), desconfio: require('./games/desconfio')
+};
 
 const G = cfg.global;
 const app = express();
@@ -22,7 +25,7 @@ const lobby = () => io.emit('lobby', publicRooms());
 function push(r) {
   r.last = Date.now();
   for (const p of r.players)
-    io.to(p.id).emit('room', { ...info(r), you: p.id, state: r.status === 'waiting' ? null : r.impl.getState(p.id) });
+    io.to(p.id).emit('room', { ...info(r), ids: r.players.map(x => x.id), you: p.id, state: r.status === 'waiting' ? null : r.impl.getState(p.id) });
 }
 
 function detach(s) {
@@ -73,13 +76,14 @@ io.on('connection', s => {
   s.on('create', d => {
     d = d || {};
     if (s.roomId) return fail('Ya estás en una sala.');
-    if (!cfg.games[d.game]) return fail('Juego desconocido.');
+    if (!Object.hasOwn(cfg.games, d.game)) return fail('Juego desconocido.');
     if (rooms.size >= G.maxRooms) return fail('Hay demasiadas salas abiertas. Probá más tarde.');
     const now = Date.now(), recent = (ipCreated.get(ip) || []).filter(x => now - x < 3600e3);
     if (recent.length >= G.maxRoomsPerHour) return fail('Creaste muchas salas. Esperá un rato.');
     ipCreated.set(ip, [...recent, now]);
+    const opts = d.opts && typeof d.opts === 'object' ? d.opts : {};
     const r = { id: code(), game: d.game, host: s.id, players: [{ id: s.id, name: clean(d.name) }],
-      status: 'waiting', isPublic: d.isPublic !== false, impl: new GAMES[d.game](), last: now };
+      status: 'waiting', isPublic: d.isPublic !== false, opts, round: 0, impl: new GAMES[d.game](opts), last: now };
     rooms.set(r.id, r); s.join(r.id); s.roomId = r.id; push(r); lobby();
   });
 
@@ -97,7 +101,7 @@ io.on('connection', s => {
     const r = rooms.get(s.roomId);
     if (!r || r.host !== s.id || r.status === 'playing') return;
     if (r.players.length < cfg.games[r.game].min) return fail('Faltan jugadores para empezar.');
-    r.impl = new GAMES[r.game](); r.impl.start(r.players.map(p => p.id));
+    r.impl = new GAMES[r.game](r.opts); r.impl.start(r.players.map(p => p.id), r.round++);
     r.status = 'playing'; push(r); lobby();
   });
 
