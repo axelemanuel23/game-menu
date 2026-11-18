@@ -37,33 +37,52 @@ select{background:var(--felt);color:var(--chalk);border:1px solid var(--line);bo
 .g button{aspect-ratio:1;padding:0;border:0;border-radius:3px;background:#2c6b73}
 .g button:disabled{cursor:default;opacity:1}
 .g .ship{background:#aab5b0}.g .hit{background:#d9483b}.g .miss{background:#173f33}
+.back{display:inline-block;width:34px;height:48px;border-radius:5px;border:1px solid var(--line);background:repeating-linear-gradient(45deg,#2c6b73,#2c6b73 4px,#215646 4px,#215646 8px)}
 </style>
 </head>
 <body>
-<header><h1>Plataforma de juegos</h1><input id="name" placeholder="Tu apodo" maxlength="20" aria-label="Tu apodo"></header>
+<header><h1>Plataforma de juegos</h1><div id="who"></div></header>
 <main id="app"></main>
 <div id="toast" role="status" hidden></div>
 <script src="/socket.io/socket.io.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let games = [], rooms = [], cur = null, room = null, tt;
+let games = [], rooms = [], cur = null, room = null, me = null, booting = false, tt;
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
 const toast = m => { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 3500); };
 const socket = io();
-socket.on('connect', () => { room = null; draw(); });
+const hello = extra => socket.emit('hello', { token: store.get('token'), ...extra });
+booting = !!store.get('token');
+socket.on('connect', () => { if (store.get('token')) hello(store.get('role') === 'board' ? { role: 'board' } : {}); });
 socket.on('games', g => { games = g; draw(); });
 socket.on('lobby', r => { rooms = r; draw(); });
 socket.on('room', r => { room = r; draw(); });
+socket.on('needName', () => { booting = false; me = null; room = null; draw(); });
+socket.on('session', s => {
+  booting = false; me = s; store.set('token', s.token); store.set('role', s.role);
+  const c = new URLSearchParams(location.search).get('sala');
+  if (c) { history.replaceState(null, '', '/'); if (s.role === 'player' && !room) socket.emit('join', { id: c }); }
+  draw();
+});
+socket.on('taken', () => { me = null; room = null; toast('Tu sesión se abrió en otra pestaña.'); draw(); });
 socket.on('kicked', m => { room = null; toast(m); draw(); });
 socket.on('err', toast);
-socket.on('disconnect', () => toast('Se perdió la conexión con el servidor.'));
+socket.on('disconnect', () => toast('Se perdió la conexión. Reconectando…'));
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !socket.connected) socket.connect(); });
 
-const nick = () => $('#name').value.trim() || 'Jugador';
+const login = role => hello(role ? { role } : { name: $('#nm').value });
+const bye = () => { socket.emit('bye'); store.set('token', ''); me = null; room = null; cur = null; draw(); };
 const pick = g => { cur = g; draw(); }, back = () => { cur = null; draw(); };
-const create = () => socket.emit('create', { game: cur, name: nick(), isPublic: $('#pub').checked, opts: OPTS[cur] ? OPTS[cur].get() : {} });
-const join = id => socket.emit('join', { id, name: nick() });
+const create = () => socket.emit('create', { game: cur, isPublic: $('#pub') ? $('#pub').checked : false, opts: OPTS[cur] ? OPTS[cur].get() : {} });
+const join = id => socket.emit('join', { id });
 const start = () => socket.emit('start'), move = d => socket.emit('move', d);
 const leave = () => { socket.emit('leave'); room = null; draw(); };
+
+const loginView = () => booting ? '<p>Conectando…</p>' : `<h2>¿Cómo te llamás?</h2><div class="row"><input id="nm" maxlength="20" placeholder="Tu nombre" aria-label="Tu nombre"><button onclick="login()">Entrar</button></div><p><button class="ghost" onclick="login('board')">Usar este dispositivo como tablero</button></p>`;
+const boardMenuView = () => cur
+  ? `<button class="ghost" onclick="back()">Volver</button><h2>${esc(games.find(x => x.id === cur).name)}</h2>${OPTS[cur] ? OPTS[cur].html : ''}<button onclick="create()">Abrir sala en el tablero</button>`
+  : `<h2>Elegí un juego para el tablero</h2><div class="grid">${games.filter(g => g.board).map(g => `<button class="card" onclick="pick('${g.id}')"><h3>${esc(g.name)}</h3><p>${esc(g.desc)}</p></button>`).join('')}</div>`;
 
 const menuView = () => `<h2>Elegí un juego</h2><div class="grid">${games.map(g =>
   `<button class="card" onclick="pick('${g.id}')"><h3>${esc(g.name)}</h3><p>${esc(g.desc)}</p>
@@ -80,10 +99,9 @@ const lobbyView = () => {
 
 const VIEWS = {
   tateti: r => {
-    const s = r.state, mine = s.turn === r.you;
-    const msg = s.winner ? (s.winner === r.you ? '¡Ganaste!' : 'Perdiste') : s.draw ? 'Empate' : mine ? `Tu turno (${s.you})` : 'Turno del rival';
-    return `<p class="msg">${msg}</p><div class="board">${s.board.map((c, i) =>
-      `<button ${c || s.winner || s.draw || !mine ? 'disabled' : ''} onclick="move({cell:${i}})" aria-label="Casilla ${i + 1}">${c || ''}</button>`).join('')}</div>`;
+    const s = r.state, b = r.mode === 'board', mine = s.turn === r.you;
+    const msg = s.winner ? (b ? `Ganó ${nameOf(r, s.winner)}` : s.winner === r.you ? '¡Ganaste!' : 'Perdiste') : s.draw ? 'Empate' : b ? `Turno de ${nameOf(r, s.turn)}` : mine ? `Tu turno (${s.you})` : 'Turno del rival';
+    return `<p class="msg">${msg}</p><div class="board">${s.board.map((c, i) => `<button ${b || c || s.winner || s.draw || !mine ? 'disabled' : ''} onclick="move({cell:${i}})" aria-label="Casilla ${i + 1}">${c || ''}</button>`).join('')}</div>`;
   }
 };
 
@@ -155,23 +173,28 @@ VIEWS.desconfio = r => {
   else if (mine && s.pending) act = `<p class="msg">${nm(s.lastBy)} se quedó sin cartas</p><div class="row"><button onclick="move({doubt:true})">Desconfío</button><button class="ghost" onclick="move({pass:true})">Aceptar jugada</button></div>`;
   else act = `<p class="msg">${mine ? 'Tu turno: jugá una carta' : 'Turno de ' + nm(s.turn)} (palo: ${s.suits[s.suit]})</p>` + (mine && s.lastBy ? '<div class="row"><button onclick="move({doubt:true})">Desconfío</button></div>' : '');
   const hand = `<div class="row hand">${s.hand.map(c => `<button ${mine && s.phase === 'play' && !s.pending ? '' : 'disabled'} onclick="move({card:'${c.id}'})">${esc(lab(c))}</button>`).join('')}</div>`;
-  return rv + seats + act + hand;
+  const backs = '<div class="row">' + Array.from({ length: Math.min(s.pile, 20) }, () => '<span class="back"></span>').join('') + '</div>';
+  return r.mode === 'board' ? rv + seats + backs + act : r.mode === 'phone' ? rv + act + hand : rv + seats + act + hand;
 };
 
 const roomView = () => {
-  const r = room, host = r.host === r.you;
-  const head = `<h2>${esc(r.gameName)}</h2><p>Sala <b>${r.id}</b>: ${r.players.map(esc).join(' vs ')}</p>`;
-  const exit = '<button class="ghost" onclick="leave()">Salir de la sala</button>';
-  if (r.status === 'waiting')
-    return head + `<p>Esperando jugadores (${r.players.length}/${r.max}). Compartí el código para que se unan.</p>` +
-      (host ? `<button onclick="start()" ${r.players.length < r.min ? 'disabled' : ''}>Iniciar partida</button> ` : '<p>El creador de la sala inicia la partida.</p>') + exit;
-  return head + VIEWS[r.game](r) + (r.status === 'finished' && host ? '<button onclick="start()">Jugar de nuevo</button> ' : '') + exit;
+  const r = room, host = r.host === r.you || r.mode === 'board';
+  const who = r.players.map((n, i) => esc(n) + (r.online[i] ? '' : ' (desconectado)')).join(', ') || 'nadie todavía';
+  const head = `<h2>${esc(r.gameName)}</h2><p>Sala <b>${r.id}</b>: ${who}${r.paused ? '. <b>En pausa</b>' : ''}</p>`;
+  const ctl = `<div class="row"><button class="ghost" onclick="socket.emit('pause')">${r.paused ? 'Reanudar' : 'Pausar'}</button><button class="ghost" onclick="leave()">Salir de la sala</button></div>`;
+  if (r.status === 'waiting') {
+    const url = location.origin + '/?sala=' + r.id;
+    const join = r.mode === 'board' ? `<img src="/qr?t=${encodeURIComponent(url)}" alt="QR para unirse" width="220" height="220" style="background:#fff;border-radius:8px"><p>Escaneá el QR o entrá a <b>${esc(url)}</b></p>` : '<p>Compartí el código para que se unan.</p>';
+    return head + join + `<p>Jugadores: ${r.players.length} de ${r.max}.</p>` + (host ? `<button onclick="start()" ${r.players.length < r.min ? 'disabled' : ''}>Iniciar partida</button>` : '<p>El creador inicia la partida.</p>') + ctl;
+  }
+  return head + VIEWS[r.game](r) + (r.status === 'finished' && host ? '<button onclick="start()">Jugar de nuevo</button>' : '') + ctl;
 };
 
 function draw() {
   const keep = {}, fid = document.activeElement && document.activeElement.id;
   document.querySelectorAll('#app input, #app select').forEach(e => { if (e.id) keep[e.id] = e.type === 'checkbox' ? e.checked : e.value; });
-  $('#app').innerHTML = room ? roomView() : cur ? lobbyView() : menuView();
+  $('#who').innerHTML = me ? `${esc(me.name)} <button class="ghost" onclick="bye()">Salir</button>` : '';
+  $('#app').innerHTML = !me ? loginView() : room ? roomView() : me.role === 'board' ? boardMenuView() : cur ? lobbyView() : menuView();
   for (const id in keep) { const e = document.getElementById(id); if (e) { if (e.type === 'checkbox') e.checked = keep[id]; else e.value = keep[id]; } }
   if (fid && document.getElementById(fid)) document.getElementById(fid).focus();
 }
