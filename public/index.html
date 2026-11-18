@@ -38,6 +38,8 @@ select{background:var(--felt);color:var(--chalk);border:1px solid var(--line);bo
 .g button:disabled{cursor:default;opacity:1}
 .g .ship{background:#aab5b0}.g .hit{background:#d9483b}.g .miss{background:#173f33}
 .back{display:inline-block;width:34px;height:48px;border-radius:5px;border:1px solid var(--line);background:repeating-linear-gradient(45deg,#2c6b73,#2c6b73 4px,#215646 4px,#215646 8px)}
+#fleet{position:relative;max-width:340px}
+.dship{position:absolute;background:#aab5b0;border:2px solid #173f33;border-radius:6px;cursor:grab;touch-action:none;z-index:2}
 </style>
 </head>
 <body>
@@ -107,6 +109,7 @@ const VIEWS = {
 
 const OPTS = {
   adivina: { html: '<div class="row"><label>Cifras <select id="digits">' + [3,4,5,6,7,8,9,10].map(n => `<option ${n === 4 ? 'selected' : ''}>${n}</option>`).join('') + '</select></label></div>', get: () => ({ digits: +$('#digits').value }) },
+  ahorcado: { html: '<div class="row"><label>Modo <select id="modo"><option value="grupo">Grupal: uno elige la palabra</option><option value="duelo">Duelo: cada uno su palabra</option></select></label></div>', get: () => ({ modo: $('#modo').value }) },
   desconfio: { html: '<div class="row"><label>Baraja <select id="deck"><option value="es">Española (40)</option><option value="po">Póker (52)</option></select></label></div>', get: () => ({ deck: $('#deck').value }) }
 };
 const nameOf = (r, id) => esc(r.players[r.ids.indexOf(id)] || 'Jugador');
@@ -119,6 +122,11 @@ VIEWS.adivina = r => {
   const s = r.state;
   if (s.abandoned) return gone;
   const tbl = (t, rows) => `<h3>${t}</h3><table><tr><th>Número</th><th>Acertados</th><th>En posición</th></tr>${rows.map(e => `<tr><td>${e.guess}</td><td>${e.known}</td><td>${e.exact}</td></tr>`).join('')}</table>`;
+  if (r.mode === 'board') {
+    if (s.phase === 'secret') return '<p class="msg">Los jugadores están eligiendo su número secreto…</p>';
+    const sec = s.secrets ? `<p>Números: ${r.ids.map(p => nameOf(r, p) + ' ' + s.secrets[p]).join(', ')}</p>` : '';
+    return `<p class="msg">${s.winner ? 'Ganó ' + nameOf(r, s.winner) : 'Turno de ' + nameOf(r, s.turn)}</p>${sec}` + r.ids.map(p => tbl('Intentos de ' + nameOf(r, p), s.log.filter(e => e.by === p))).join('');
+  }
   if (s.phase === 'secret') return s.mySecret ? `<p>Tu número: <b>${s.mySecret}</b></p><p class="msg">Esperando que tu rival elija el suyo…</p>`
     : `<p class="msg">Elegí tu número secreto de ${s.n} cifras, sin repetir dígitos</p><div class="row"><input id="sec" inputmode="numeric" maxlength="${s.n}" aria-label="Número secreto"><button onclick="setSecret(${s.n})">Fijar número</button></div>`;
   const mine = s.turn === r.you;
@@ -130,26 +138,34 @@ VIEWS.adivina = r => {
 
 const setWord = () => socket.emit('move', { word: $('#wd').value });
 VIEWS.ahorcado = r => {
-  const s = r.state, me = r.you;
+  const s = r.state, b = r.mode === 'board', me = r.you, duel = s.mode === 'duelo';
   if (s.abandoned) return gone;
-  if (s.phase === 'word') return s.setter === me
-    ? `<p class="msg">Elegí la palabra secreta</p><div class="row"><input id="wd" maxlength="20" placeholder="Entre 3 y 20 letras" aria-label="Palabra secreta"><button onclick="setWord()">Fijar palabra</button></div>`
-    : `<p class="msg">${nameOf(r, s.setter)} está eligiendo la palabra…</p>`;
-  const word = `<p class="msg" style="letter-spacing:.3em">${s.masked.join(' ')}</p>`;
-  const info = `<p>Errores: ${s.wrong} de ${s.max}. Letras probadas: ${s.tried.join(', ') || 'ninguna'}.</p>`;
-  if (s.result) return word + info + `<p class="msg">${(s.result === 'guessers') === (me !== s.setter) ? '¡Ganaste!' : 'Perdiste'}. La palabra era ${esc(s.word)}.</p>`;
+  if (s.phase === 'word') return s.needWord && !b
+    ? `<p class="msg">Elegí tu palabra secreta</p><div class="row"><input id="wd" maxlength="20" placeholder="Entre 3 y 20 letras" aria-label="Palabra secreta"><button onclick="setWord()">Fijar palabra</button></div>`
+    : `<p class="msg">Se está eligiendo la palabra…</p>`;
+  const boards = s.targets.map(t => `<p>${duel ? 'Palabra de ' + nameOf(r, t.owner) : 'Palabra'}</p><p class="msg" style="letter-spacing:.3em">${t.masked.join(' ')}</p><p>Errores: ${t.wrong} de ${s.max}. Letras probadas: ${t.tried.join(', ') || 'ninguna'}.${t.word && (t.owner === me || s.over) ? ' Palabra: <b>' + esc(t.word) + '</b>.' : ''}</p>`).join('');
+  if (s.over) {
+    const win = duel ? s.winner === me : (s.result === 'guessers') === (me !== s.setter);
+    const msg = b ? (duel ? 'Ganó ' + nameOf(r, s.winner) : s.result === 'guessers' ? 'Ganaron los que adivinan' : 'Ganó quien eligió la palabra') : win ? '¡Ganaste!' : 'Perdiste';
+    return boards + `<p class="msg">${msg}</p>`;
+  }
   const mine = s.turn === me;
-  if (s.setter === me) return word + info + `<p>Tu palabra: <b>${esc(s.word)}</b>. Turno de ${nameOf(r, s.turn)}.</p>`;
-  return word + info + `<p class="msg">${mine ? 'Tu turno: elegí una letra' : 'Turno de ' + nameOf(r, s.turn)}</p><div class="row hand">${[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(l => `<button ${mine && !s.tried.includes(l) ? '' : 'disabled'} onclick="move({letter:'${l}'})">${l}</button>`).join('')}</div>`;
+  return boards + `<p class="msg">${mine ? 'Tu turno: elegí una letra' : 'Turno de ' + nameOf(r, s.turn)}</p>`
+    + (b || !mine ? '' : `<div class="row hand">${[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].map(l => `<button ${s.turnTried.includes(l) ? 'disabled' : ''} onclick="move({letter:'${l}'})">${l}</button>`).join('')}</div>`);
 };
 
 VIEWS.naval = r => {
   const s = r.state, mine = s.turn === r.you;
   if (s.abandoned) return '<p class="msg">Tu rival salió de la partida.</p>';
   const cls = c => ({ S: 'ship', X: 'hit', o: 'miss' }[c] || '');
+  if (r.mode === 'board') {
+    if (s.phase === 'place') return `<p class="msg">Los jugadores están ubicando sus flotas…</p><p>${r.ids.map((p, i) => nameOf(r, p) + (s.ready[i] ? ': listo' : ': ubicando')).join(', ')}</p>`;
+    const last = s.last ? `<p>Último disparo de ${nameOf(r, s.last.by)}: ${s.last.res}.</p>` : '';
+    return `<p class="msg">${s.winner ? 'Ganó ' + nameOf(r, s.winner) : 'Turno de ' + nameOf(r, s.turn)}</p>${last}` + s.grids.map(g => `<h3>Flota de ${nameOf(r, g.owner)} (${g.left} barcos a flote)</h3><div class="g">${g.cells.map(c => `<button class="${cls(c)}" disabled></button>`).join('')}</div>`).join('');
+  }
   const grid = fn => `<div class="g">${s.mine.map((_, i) => fn(i)).join('')}</div>`;
   const own = grid(i => `<button class="${cls(s.mine[i])}" disabled></button>`);
-  if (s.phase === 'place') return `<p>Tu flota está ubicada al azar. Reubicala hasta que te guste y avisá que estás listo.</p>${own}`
+  if (s.phase === 'place') return `<p>Arrastrá los barcos para moverlos y tocalos para girarlos, o reubicalos al azar. Cuando te guste, avisá que estás listo.</p>${s.ready ? own : `<div id="fleet">${own}${shipsOverlay(s.ships)}</div>`}`
     + (s.ready ? '<p class="msg">Esperando a tu rival…</p>' : '<div class="row"><button class="ghost" onclick="move({random:true})">Reubicar al azar</button><button onclick="move({ready:true})">Estoy listo</button></div>');
   const can = mine && !s.winner;
   const foe = grid(i => `<button class="${cls(s.theirs[i])}" ${s.theirs[i] || !can ? 'disabled' : ''} onclick="move({cell:${i}})" aria-label="Disparar a la casilla ${i + 1}"></button>`);
@@ -177,6 +193,37 @@ VIEWS.desconfio = r => {
   return r.mode === 'board' ? rv + seats + backs + act : r.mode === 'phone' ? rv + act + hand : rv + seats + act + hand;
 };
 
+// Ubicación manual de barcos: arrastrar para mover, tocar para girar.
+const shipsOverlay = ships => ships.map((c, k) => {
+  const h = c[1] - c[0] === 1;
+  return `<div class="dship" data-k="${k}" style="left:${(c[0] % 10) * 10}%;top:${Math.floor(c[0] / 10) * 10}%;width:${(h ? c.length : 1) * 10}%;height:${(h ? 1 : c.length) * 10}%"></div>`;
+}).join('');
+const cellsOf = (o, len, h) => Array.from({ length: len }, (_, i) => o + (h ? i : i * 10));
+const fits = (cells, others) => cells.every(c => c >= 0 && c < 100) && cells[0] % 10 + (cells[1] - cells[0] === 1 ? cells.length - 1 : 0) < 10 && !others.flat().some(c => cells.includes(c));
+function bindFleet() {
+  const f = $('#fleet');
+  if (!f || !room || !room.state || room.state.ready) return;
+  const ships = room.state.ships.map(c => [...c]);
+  f.querySelectorAll('.dship').forEach(el => el.addEventListener('pointerdown', e => {
+    const k = +el.dataset.k, c = ships[k], h = c[1] - c[0] === 1, others = ships.filter((_, i) => i !== k);
+    const px = f.clientWidth / 10, x0 = e.clientX, y0 = e.clientY;
+    let moved = false, dc = 0, dr = 0;
+    el.setPointerCapture(e.pointerId);
+    el.onpointermove = ev => {
+      dc = Math.round((ev.clientX - x0) / px); dr = Math.round((ev.clientY - y0) / px);
+      moved = moved || Math.abs(ev.clientX - x0) + Math.abs(ev.clientY - y0) > 6;
+      el.style.transform = `translate(${dc * px}px,${dr * px}px)`;
+    };
+    el.onpointerup = () => {
+      el.onpointermove = el.onpointerup = null;
+      const col = c[0] % 10 + dc, row = Math.floor(c[0] / 10) + dr;
+      const next = moved ? (col < 0 || col > 9 || row < 0 || row > 9 ? [] : cellsOf(row * 10 + col, c.length, h)) : cellsOf(c[0], c.length, !h);
+      if (!next.length || !fits(next, others)) { el.style.transform = ''; if (!moved) toast('No hay lugar para girar ese barco.'); return; }
+      ships[k] = next; move({ ships });
+    };
+  }));
+}
+
 const roomView = () => {
   const r = room, host = r.host === r.you || r.mode === 'board';
   const who = r.players.map((n, i) => esc(n) + (r.online[i] ? '' : ' (desconectado)')).join(', ') || 'nadie todavía';
@@ -197,6 +244,7 @@ function draw() {
   $('#app').innerHTML = !me ? loginView() : room ? roomView() : me.role === 'board' ? boardMenuView() : cur ? lobbyView() : menuView();
   for (const id in keep) { const e = document.getElementById(id); if (e) { if (e.type === 'checkbox') e.checked = keep[id]; else e.value = keep[id]; } }
   if (fid && document.getElementById(fid)) document.getElementById(fid).focus();
+  bindFleet();
 }
 draw();
 </script>
