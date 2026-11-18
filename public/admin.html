@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Administración</title>
+<style>
+body{font:16px/1.5 "Segoe UI",Roboto,system-ui,sans-serif;max-width:760px;margin:0 auto;padding:16px;background:#173f33;color:#eeece0}
+table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #3a7561;text-align:left}
+button{padding:6px 12px;border:0;border-radius:6px;background:#f2b632;color:#2a2100;font:inherit;font-weight:600;cursor:pointer}
+</style>
+</head>
+<body>
+<h1>Administración</h1>
+<p id="sum">Cargando…</p>
+<div style="overflow-x:auto"><table><thead><tr><th>Sala</th><th>Juego</th><th>Jugadores</th><th>Estado</th><th>Inactiva</th><th></th></tr></thead><tbody id="rows"></tbody></table></div>
+<script>
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const token = sessionStorage.getItem('t') || prompt('Token de administrador') || '';
+sessionStorage.setItem('t', token);
+const H = { 'x-admin-token': token };
+const states = { waiting: 'Esperando', playing: 'Jugando', finished: 'Terminada' };
+let timer;
+async function load() {
+  const r = await fetch('/admin/api/stats', { headers: H });
+  if (r.status === 401) { sessionStorage.removeItem('t'); clearInterval(timer); document.getElementById('sum').textContent = 'Token incorrecto. Recargá la página para reintentar.'; return; }
+  const d = await r.json(), L = d.limits;
+  document.getElementById('sum').textContent = `Conexiones: ${d.connections}/${L.maxConnections}. Salas: ${d.rooms.length}/${L.maxRooms}. Memoria: ${d.memoryMB} MB.`;
+  document.getElementById('rows').innerHTML = d.rooms.map(x => `<tr><td>${esc(x.id)}</td><td>${esc(x.gameName)}</td><td>${x.players.map(esc).join(', ')}</td><td>${states[x.status]}</td><td>${x.idleSec} s</td><td><button onclick="closeRoom('${x.id}')">Cerrar</button></td></tr>`).join('')
+    || '<tr><td colspan="6">No hay salas activas.</td></tr>';
+}
+async function closeRoom(id) { await fetch('/admin/api/close/' + id, { method: 'POST', headers: H }); load(); }
+load(); timer = setInterval(load, 3000);
+</script>
+</body>
+</html>
