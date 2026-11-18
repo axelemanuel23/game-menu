@@ -21,6 +21,6 @@ module.exports = class TaTeTi {
   onLeave(id) { if (!this.finished) this.winner = this.players.find(p => p !== id) ?? null; }
   getState(id) {
     return { board: this.board, turn: this.players[this.turn], winner: this.winner, draw: this.draw,
-             you: this.players.indexOf(id) === 0 ? 'X' : 'O' };
+             you: id ? (this.players.indexOf(id) === 0 ? 'X' : 'O') : null };
   }
 };
