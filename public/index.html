@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Plataforma de juegos</title>
+<style>
+:root{--felt:#173f33;--panel:#215646;--chalk:#eeece0;--gold:#f2b632;--red:#a8322a;--line:#3a7561}
+*{box-sizing:border-box}
+body{margin:0;background:var(--felt);color:var(--chalk);font:16px/1.5 "Segoe UI",Roboto,system-ui,sans-serif}
+header,main{max-width:640px;margin:0 auto;padding:16px}
+header{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+h1{font-size:1.4rem;margin:0}
+input{background:var(--felt);color:var(--chalk);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit;min-width:0}
+button{font:inherit;cursor:pointer;border:0;border-radius:8px;padding:10px 16px;background:var(--gold);color:#2a2100;font-weight:600}
+button.ghost{background:transparent;color:var(--chalk);border:1px solid var(--line)}
+button:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.grid{display:grid;gap:12px}
+.card{background:var(--panel);color:var(--chalk);text-align:left;border:1px solid var(--line);padding:16px;font-weight:400}
+.card h3{margin:0 0 4px;color:var(--gold)}
+.card p{margin:0}
+.card small{opacity:.8}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}
+.room{display:flex;justify-content:space-between;align-items:center;background:var(--panel);border-radius:8px;padding:10px 14px;margin:8px 0}
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:320px;margin:16px 0}
+.board button{aspect-ratio:1;font-size:2.4rem;background:var(--panel);color:var(--chalk);border:1px solid var(--line)}
+.board button:disabled{opacity:1;cursor:default}
+.msg{font-size:1.2rem;font-weight:600;color:var(--gold)}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--red);padding:10px 16px;border-radius:8px;max-width:90%}
+#toast[hidden]{display:none}
+</style>
+</head>
+<body>
+<header><h1>Plataforma de juegos</h1><input id="name" placeholder="Tu apodo" maxlength="20" aria-label="Tu apodo"></header>
+<main id="app"></main>
+<div id="toast" role="status" hidden></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let games = [], rooms = [], cur = null, room = null, tt;
+const toast = m => { const t = $('#toast'); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 3500); };
+const socket = io();
+socket.on('connect', () => { room = null; draw(); });
+socket.on('games', g => { games = g; draw(); });
+socket.on('lobby', r => { rooms = r; draw(); });
+socket.on('room', r => { room = r; draw(); });
+socket.on('kicked', m => { room = null; toast(m); draw(); });
+socket.on('err', toast);
+socket.on('disconnect', () => toast('Se perdió la conexión con el servidor.'));
+
+const nick = () => $('#name').value.trim() || 'Jugador';
+const pick = g => { cur = g; draw(); }, back = () => { cur = null; draw(); };
+const create = () => socket.emit('create', { game: cur, name: nick(), isPublic: $('#pub').checked });
+const join = id => socket.emit('join', { id, name: nick() });
+const start = () => socket.emit('start'), move = d => socket.emit('move', d);
+const leave = () => { socket.emit('leave'); room = null; draw(); };
+
+const menuView = () => `<h2>Elegí un juego</h2><div class="grid">${games.map(g =>
+  `<button class="card" onclick="pick('${g.id}')"><h3>${esc(g.name)}</h3><p>${esc(g.desc)}</p>
+   <small>${g.min === g.max ? g.max : g.min + ' a ' + g.max} jugadores, ${rooms.filter(r => r.game === g.id).length} salas abiertas</small></button>`).join('')}</div>`;
+
+const lobbyView = () => {
+  const g = games.find(x => x.id === cur), list = rooms.filter(r => r.game === cur);
+  return `<button class="ghost" onclick="back()">Volver al menú</button><h2>${esc(g.name)}</h2>
+  <div class="row"><button onclick="create()">Crear sala</button><label><input type="checkbox" id="pub" checked> Sala pública</label></div>
+  <div class="row"><input id="code" maxlength="4" size="12" placeholder="Código de sala" aria-label="Código de sala"><button class="ghost" onclick="join($('#code').value)">Unirse con código</button></div>
+  <h3>Salas abiertas</h3>${list.length ? list.map(r => `<div class="room"><span>${r.players.map(esc).join(', ')} (${r.players.length}/${r.max})</span><button onclick="join('${r.id}')">Unirse</button></div>`).join('')
+    : '<p>No hay salas abiertas. Creá una para empezar.</p>'}`;
+};
+
+const VIEWS = {
+  tateti: r => {
+    const s = r.state, mine = s.turn === r.you;
+    const msg = s.winner ? (s.winner === r.you ? '¡Ganaste!' : 'Perdiste') : s.draw ? 'Empate' : mine ? `Tu turno (${s.you})` : 'Turno del rival';
+    return `<p class="msg">${msg}</p><div class="board">${s.board.map((c, i) =>
+      `<button ${c || s.winner || s.draw || !mine ? 'disabled' : ''} onclick="move({cell:${i}})" aria-label="Casilla ${i + 1}">${c || ''}</button>`).join('')}</div>`;
+  }
+};
+
+const roomView = () => {
+  const r = room, host = r.host === r.you;
+  const head = `<h2>${esc(r.gameName)}</h2><p>Sala <b>${r.id}</b>: ${r.players.map(esc).join(' vs ')}</p>`;
+  const exit = '<button class="ghost" onclick="leave()">Salir de la sala</button>';
+  if (r.status === 'waiting')
+    return head + `<p>Esperando jugadores (${r.players.length}/${r.max}). Compartí el código para que se unan.</p>` +
+      (host ? `<button onclick="start()" ${r.players.length < r.min ? 'disabled' : ''}>Iniciar partida</button> ` : '<p>El creador de la sala inicia la partida.</p>') + exit;
+  return head + VIEWS[r.game](r) + (r.status === 'finished' && host ? '<button onclick="start()">Jugar de nuevo</button> ' : '') + exit;
+};
+
+function draw() {
+  const c = $('#code'), v = c ? c.value : '', f = c && document.activeElement === c, p = $('#pub'), pc = p ? p.checked : true;
+  $('#app').innerHTML = room ? roomView() : cur ? lobbyView() : menuView();
+  if ($('#code')) { $('#code').value = v; if (f) $('#code').focus(); }
+  if ($('#pub')) $('#pub').checked = pc;
+}
+draw();
+</script>
+</body>
+</html>
