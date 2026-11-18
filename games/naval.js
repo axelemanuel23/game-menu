@@ -57,7 +57,7 @@ module.exports = class Naval extends Base {
     const res = !ship ? 'agua' : ship.every(x => q.shots.has(x)) ? 'hundido' : 'tocado';
     this.last = { by: id, res };
     if (q.ships.every(s => s.every(x => q.shots.has(x)))) { this.winner = id; this.over = true; }
-    else this.turn = 1 - this.turn;
+    else if (res === 'agua') this.turn = 1 - this.turn; // si acierta (tocado o hundido) dispara de nuevo
   }
   getState(id) {
     if (!id) return { board: true, phase: this.phase, turn: this.ids[this.turn], winner: this.winner, abandoned: this.abandoned,
