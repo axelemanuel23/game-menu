@@ -2,7 +2,7 @@
 // Uso: Cartas.init({ redraw, play }); Cartas.mano(mazo, cartas, activa) devuelve el HTML de la mano.
 const Cartas = (() => {
   const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  let sel = null, scroll = 0, centrar = false, redraw = () => {}, play = () => {};
+  let sel = null, scroll = 0, lock = 0, redraw = () => {}, play = () => {};
 
   const label = (m, c) => {
     const v = m.valores.find(x => x.id === c.v), p = m.palos.find(x => x.id === c.p);
@@ -20,11 +20,29 @@ const Cartas = (() => {
   // tocarla de nuevo la baja; tocar otra visible cambia la selección.
   const mano = (m, cartas, activa) => {
     if (!activa || !cartas.some(c => c.id === sel)) sel = null;
-    return `<div class="mano${sel ? ' bloqueada' : ''}">${cartas.map(c => `<div class="cw${c.id === sel ? ' sel' : ''}">
+    return `<div class="mano${sel ? ' bloqueada' : ''}">${cartas.map(c => `<div class="cw${c.id === sel ? ' sel' : ''}" data-id="${c.id}">
       <button class="cb" ${activa ? '' : 'disabled'} aria-pressed="${c.id === sel}" aria-label="${esc(label(m, c))}" onclick="Cartas.tap('${c.id}')">${img(m, c)}</button>
       ${c.id === sel ? '<button class="jugar" onclick="Cartas.jugar()">Jugar</button>' : ''}</div>`).join('')}</div>`;
   };
-  const tap = id => { sel = sel === id ? null : id; centrar = !!sel; redraw(); };
+  // Levantar/bajar se hace sobre el DOM existente (sin redibujar) para que la transición de CSS se vea.
+  const quitar = el => { el.classList.remove('sel'); el.querySelector('.cb').setAttribute('aria-pressed', 'false'); const b = el.querySelector('.jugar'); if (b) b.remove(); };
+  const poner = el => {
+    el.classList.add('sel'); el.querySelector('.cb').setAttribute('aria-pressed', 'true');
+    const b = document.createElement('button'); b.className = 'jugar'; b.textContent = 'Jugar'; b.onclick = jugar; el.appendChild(b);
+  };
+  const tap = id => {
+    const e = document.querySelector('.mano'), el = e && [...e.children].find(x => x.dataset.id === id);
+    if (!el) return;
+    const prev = e.querySelector('.sel');
+    if (prev) quitar(prev);
+    clearTimeout(lock);
+    if (sel === id) { sel = null; e.classList.remove('bloqueada'); return; }
+    sel = id; poner(el);
+    // Se centra la carta con animación y el scroll se bloquea cuando termina.
+    scroll = Math.max(0, Math.min(el.offsetLeft - (e.clientWidth - el.offsetWidth) / 2, e.scrollWidth - e.clientWidth));
+    e.scrollTo({ left: scroll, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    lock = setTimeout(() => { if (sel === id) e.classList.add('bloqueada'); }, 300);
+  };
   const jugar = () => { const id = sel; sel = null; if (id) play(id); };
 
   // La pantalla se redibuja entera con cada novedad del servidor: se conserva la posición del scroll.
@@ -33,9 +51,6 @@ const Cartas = (() => {
     const e = document.querySelector('.mano');
     if (!e) return;
     e.scrollLeft = scroll;
-    const c = centrar && e.querySelector('.sel');
-    centrar = false;
-    if (c) { e.scrollLeft = c.offsetLeft - (e.clientWidth - c.offsetWidth) / 2; scroll = e.scrollLeft; }
   };
   const init = o => { redraw = o.redraw; play = o.play; };
   return { label, texto, img, dorsos, mano, tap, jugar, guardar, restaurar, init };
